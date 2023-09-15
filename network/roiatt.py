@@ -11,7 +11,6 @@ import torch.nn as nn
 
 
 class RoiAtt(nn.Module):
-    '''roi间注意力运算'''
     def __init__(self, feat_channel, hidden_channel):
         super().__init__()
 

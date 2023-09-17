@@ -26,9 +26,6 @@ LOG_DIR="./logs/cmd_swinb"
 # LOG_DIR="./logs/cas_swinb"
 # LOG_DIR="./logs/cas_convb"
 
-
-# NUM_EPOCHS=30
-# NUM_EPOCHS=40
 NUM_EPOCHS=50
 
 

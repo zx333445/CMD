@@ -6,7 +6,7 @@ import torch.nn.functional as F
 
 
 class BCEFocalLoss(nn.Module):
-    '''二分类focalloss'''
+    ''''''
     def __init__(self, alpha=0.25, gamma=2, from_logits=True, reduce=True):
         super(BCEFocalLoss, self).__init__()
         self.gamma = gamma
@@ -20,7 +20,6 @@ class BCEFocalLoss(nn.Module):
                 inputs, targets, reduce=False
             )
         else:
-            # 此处需要传入的预测需要为概率值,不是预测分数,即需要经过sigmoid映射
             bce_loss = F.binary_cross_entropy(inputs, targets,
                                               reduce=False)
         pt = torch.exp(-bce_loss)
@@ -33,7 +32,7 @@ class BCEFocalLoss(nn.Module):
 
 
 class CEFocalLoss(nn.Module):
-    '''多分类focalloss'''
+    ''''''
     def __init__(self, class_nums, alpha=[0.75, 0.25], gamma=2, size_avg=True):
         super(CEFocalLoss, self).__init__()
         if alpha is None:

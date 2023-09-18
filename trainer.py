@@ -8,7 +8,6 @@ sys.path.append(".")
 sys.path.append("..")
 import tool.utils as utils
 from tool.voc_eval_new import custom_voc_eval
-# 使用tensorboard可视化损失
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 import copy
@@ -58,7 +57,6 @@ def train_process(model, optimizer, lr_sche,
             targets = [{k: v.to(device) for k, v in t.items()}
                       for t in targets]
             optimizer.zero_grad()
-            # 得到损失值字典
             loss_dict = model(images, targets)
             losses = sum(loss for loss in loss_dict.values())
 
@@ -140,7 +138,6 @@ def train_process(model, optimizer, lr_sche,
             loc_csv_path="/home/stat-zx/CTC_cascade/results/val_loc.csv"
         )
 
-        # 打印该epoch后验证集的各类别AP值
         print(f"Epoch: {epoch}, | val CTC AP :{valap_dict['1']:.4f}")
         print(f"Epoch: {epoch}, | val CTC样 AP :{valap_dict['2']:.4f}")
         print(f"Epoch: {epoch}, | val mAP: {val_mAP:.4f}")
@@ -179,7 +176,6 @@ def train_process(model, optimizer, lr_sche,
             #     global_step=epoch
             # )
         
-        # 因为evaluate函数中将模型转为eval模式,此处需要再次转为train进行下一次epoch
         model.train()
         model.apply(freeze_bn)
 
@@ -212,14 +208,12 @@ def custom_voc_evaluate(model, data_loader, device,
                         cls_csv_path,
                         loc_csv_path,
                         savefig_flag=False):
-    '''计算voc指标,不使用coco'''                    
+                            
     cpu_device = torch.device('cpu')
     model.eval()
     metric_logger = utils.MetricLogger(delimiter="  ")
     header = 'Test'
     
-    # perd存储图片的中CTC预测框的最高置信度score
-    # locs存储各个预测框的预测标签,置信度与坐标信息
     preds = [] 
     locs = []
     for image, _ in metric_logger.log_every(data_loader, 100, header):
@@ -228,7 +222,7 @@ def custom_voc_evaluate(model, data_loader, device,
 
         outputs = [{k: v.to(cpu_device) for k, v in t.items()}
                   for t in outputs]
-        # 没有预测框时,即没有可检测目标,pred与locs都存储为空
+
         if len(outputs[-1]["boxes"]) == 0:
             # if no pred boxes, means that the image is negative
             preds.append(0)
@@ -242,20 +236,15 @@ def custom_voc_evaluate(model, data_loader, device,
             new_scores = outputs[-1]["scores"][new_output_index]
             new_labels = outputs[-1]["labels"][new_output_index]
             
-            # label为1即预测为CTC细胞,label为2则为CTC样细胞
             # CTC_index = torch.where(new_labels == 1)
             CTC_index = torch.where(new_labels != 3)
-            # 注意此处判断时,torch.where返回嵌套元组没有符合条件时长度也为1,
-            # 需要取出代表index的对象index[0]
-            if len(new_boxes) != 0 and len(CTC_index[0]) != 0:
-                # 只储存一张图中CTC预测框置信度最高的score                
+            if len(new_boxes) != 0 and len(CTC_index[0]) != 0:                
                 preds.append(torch.max(new_scores[CTC_index]).tolist())
             else:
                 preds.append(0)
             
             # used to save pred coords x1 y1 x2 y2
             # used to save pred box scores
-            # 存储该张图片所有预测框的坐标与标签与置信度,最后写入line中,按图片存储为loc信息
             coords = [] 
             for i in range(len(new_boxes)):
                 new_box = new_boxes[i].tolist()

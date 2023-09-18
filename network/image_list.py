@@ -16,11 +16,9 @@ class ImageList(object):
         # type: (Tensor, List[Tuple[int, int]]) -> None
         """
         Arguments:
-            tensors (tensor) padding后的图像数据
-            image_sizes (list[tuple[int, int]])  padding前的图像尺寸
+            tensors (tensor) 
+            image_sizes (list[tuple[int, int]])  
         """
-        # images[2,3,H,W]  
-        # image_sizes 长度为2的List[(h,w),...]
         self.tensors = tensors
         self.image_sizes = image_sizes
 

@@ -17,9 +17,6 @@ from .roiatt import RoiAtt
 class FasterRCNNBase(nn.Module):
     """
     Main class for Generalized R-CNN.
-    将整个网络的组件实例化作为类的实例变量,并定义了前向传播的方法,
-    fasterRcnn类继承该类的属性与方法,用于传入各个参数,但不改变此base类定义的流程
-
     Arguments:
         backbone (nn.Module):
         rpn (nn.Module):
@@ -65,7 +62,7 @@ class FasterRCNNBase(nn.Module):
 
         if self.training:
             assert targets is not None
-            for target in targets:         # 进一步判断传入的target的boxes参数是否符合规定
+            for target in targets:         
                 boxes = target["boxes"]
                 if isinstance(boxes, torch.Tensor):
                     if len(boxes.shape) != 2 or boxes.shape[-1] != 4:
@@ -79,27 +76,19 @@ class FasterRCNNBase(nn.Module):
         original_image_sizes = torch.jit.annotate(List[Tuple[int, int]], [])
         for img in images:
             val = img.shape[-2:]
-            assert len(val) == 2  # 防止输入的是个一维向量
+            assert len(val) == 2  
             original_image_sizes.append((val[0], val[1]))
         # original_image_sizes = [img.shape[-2:] for img in images]
-
-        # 此处的图像输出为打包成batch后的tensor(经过填充为同一个尺寸)
-        images, targets = self.transform(images, targets)  # 对图像进行预处理
+        images, targets = self.transform(images, targets)  
 
         # print(images.tensors.shape)
-        features = self.backbone(images.tensors)  # 将图像输入backbone得到特征图
-        if isinstance(features, torch.Tensor):  # 若只在一层特征层上预测，将feature放入有序字典中，并编号为‘0’
-            features = OrderedDict([('0', features)])  # 若在多层特征层上预测，传入的就是一个有序字典
+        features = self.backbone(images.tensors) 
+        if isinstance(features, torch.Tensor):  
+            features = OrderedDict([('0', features)])  
 
-        # 将特征层以及标注target信息传入rpn中
         # proposals: List[Tensor], Tensor_shape: [num_proposals, 4],
-        # 每个proposals是绝对坐标，且为(x1, y1, x2, y2)格式
         proposals, proposal_losses = self.rpn(images, features, targets)
-
-        # 将rpn生成的数据以及标注target信息传入fast rcnn后半部分
         detections, detector_losses = self.roi_heads(features, proposals, images.image_sizes, targets)
-
-        # 对网络的预测结果进行后处理（主要将bboxes还原到原图像尺度上）
         detections = self.transform.postprocess(detections, images.image_sizes, original_image_sizes)
 
         losses = {}
@@ -114,11 +103,6 @@ class FasterRCNNBase(nn.Module):
         else:
             return self.eager_outputs(losses, detections)
 
-        # if self.training:
-        #     return losses
-        #
-        # return detections
-
 
 class TwoMLPHead(nn.Module):
     """
@@ -131,24 +115,18 @@ class TwoMLPHead(nn.Module):
 
     def __init__(self, in_channels, representation_size):
         super(TwoMLPHead, self).__init__()
-
         self.fc6 = nn.Linear(in_channels, representation_size)
         self.fc7 = nn.Linear(representation_size, representation_size)
 
     def forward(self, x):
-        # x 展平前shape tensor(1024,256,7,7)
-        # 展平后shape tensor(1024,12544)
         x = x.flatten(start_dim=1)
-
         x = F.relu(self.fc6(x))
         x = F.relu(self.fc7(x))
-
         return x
 
 
 class AttConvHead(nn.Module):
     '''
-    替代twomlphead接受ROIpool后的输出,添加通道注意力attconv模块
     inchannels 256
     resolution 7
     representation 1024
@@ -161,40 +139,30 @@ class AttConvHead(nn.Module):
         self.conv = nn.Conv2d(in_channels,representation_size,resolution)
 
     def forward(self,x):
-        # x维度为(1024,256,7,7),att维度为(1024,256,1,1)
         att = torch.sigmoid(self.attconv(x))
         x = att*x
-        # pool维度为(1024,1,7,7),spa维度为(1024,1,7,7)
         channel_pool = torch.max(x,1)[0].unsqueeze(1)
         spa = torch.sigmoid(self.spaconv(channel_pool))
         x = spa*x
-        
-        # out维度为(1024,1024)
         out = F.relu(self.conv(x)).view(x.shape[0],-1)
-
         return out
 
 
 class TwoConvHead(nn.Module):
     '''
-    替代twomlphead接受ROIpool后的输出,两个conv卷积
     inchannels 256
     resolution 7
     representation 1024
     '''
     def __init__(self, in_channels):
         super().__init__()
-
         self.conv1 = nn.Conv2d(in_channels,in_channels,3,padding=1)
         self.conv2 = nn.Conv2d(in_channels,in_channels,6)
 
     def forward(self,x):
-        # 维度变化为(1024,256,7,7) --> (1024,256,7,7) --> (1024,256,2,2)
-        # out维度为(1024,1024)
         x = F.relu(self.conv1(x))
         x = F.relu(self.conv2(x))
         out = x.view(x.shape[0],-1)
-
         return out
 
 
@@ -306,31 +274,30 @@ class FasterRCNN(FasterRCNNBase):
 
     def __init__(self, backbone, num_classes=None,
                  # transform parameter
-                 min_size=800, max_size=1333,      # 预处理resize时限制的最小尺寸与最大尺寸
-                 image_mean=None, image_std=None,  # 预处理normalize时使用的均值和方差
+                 min_size=800, max_size=1333,      
+                 image_mean=None, image_std=None,  
                  # RPN parameters
                  rpn_anchor_generator=None, rpn_head=None,
                  rpn_pre_nms_top_n_train=2000, 
-                 rpn_pre_nms_top_n_test=1000,    # rpn中在nms处理前保留的proposal数(根据score)
+                 rpn_pre_nms_top_n_test=1000,    
                  rpn_post_nms_top_n_train=2000, 
-                 rpn_post_nms_top_n_test=1000,  # rpn中在nms处理后保留的proposal数
-                 rpn_nms_thresh=0.7,  # rpn中进行nms处理时使用的iou阈值
-                 rpn_fg_iou_thresh=0.7, rpn_bg_iou_thresh=0.3,  # rpn计算损失时，采集正负样本设置的阈值
+                 rpn_post_nms_top_n_test=1000,  
+                 rpn_nms_thresh=0.7,  
+                 rpn_fg_iou_thresh=0.7, rpn_bg_iou_thresh=0.3, 
                  rpn_batch_size_per_image=256, 
-                 rpn_positive_fraction=0.5,  # rpn计算损失时采样的样本数，以及正样本占总样本的比例
+                 rpn_positive_fraction=0.5,  
                  rpn_score_thresh=0.0,
                  # Box parameters
                  box_roi_pool=None, 
                  box_head=None, 
                  box_predictor=None,
-                 # 移除低目标概率      fast rcnn中进行nms处理的阈值   对预测结果根据score排序取前100个目标
                  box_score_thresh=0.05, 
                  box_nms_thresh=0.5, 
                  box_detections_per_img=100,
                  # box_detections_per_img=20,
-                 box_fg_iou_thresh=0.5, box_bg_iou_thresh=0.5,   # fast rcnn计算误差时，采集正负样本设置的阈值
+                 box_fg_iou_thresh=0.5, box_bg_iou_thresh=0.5,   
                  box_batch_size_per_image=512, 
-                 box_positive_fraction=0.25,  # fast rcnn计算误差时采样的样本数，以及正样本占所有样本的比例
+                 box_positive_fraction=0.25,  
                  bbox_reg_weights=None):
         if not hasattr(backbone, "out_channels"):
             raise ValueError(
@@ -351,10 +318,8 @@ class FasterRCNN(FasterRCNNBase):
                 raise ValueError("num_classes should not be None when box_predictor "
                                  "is not specified")
 
-        # 预测特征层的channels
         out_channels = backbone.out_channels
 
-        # 若anchor生成器为空，则自动生成针对resnet50_fpn的anchor生成器
         if rpn_anchor_generator is None:
             anchor_sizes = ((32,), (64,), (96,), (128,), (256,))
             aspect_ratios = ((0.5, 1.0, 2.0),) * len(anchor_sizes)
@@ -362,18 +327,13 @@ class FasterRCNN(FasterRCNNBase):
                 anchor_sizes, aspect_ratios
             )
 
-        # 生成RPN通过滑动窗口预测网络部分
         if rpn_head is None:
             rpn_head = RPNHead(
                 out_channels, rpn_anchor_generator.num_anchors_per_location()[0]
             )
-
-        # 默认rpn_pre_nms_top_n_train = 2000, rpn_pre_nms_top_n_test = 1000,
-        # 默认rpn_post_nms_top_n_train = 2000, rpn_post_nms_top_n_test = 1000,
         rpn_pre_nms_top_n = dict(training=rpn_pre_nms_top_n_train, testing=rpn_pre_nms_top_n_test)
         rpn_post_nms_top_n = dict(training=rpn_post_nms_top_n_train, testing=rpn_post_nms_top_n_test)
 
-        # 定义整个RPN框架
         rpn = RegionProposalNetwork(
             rpn_anchor_generator, rpn_head,
             rpn_fg_iou_thresh, rpn_bg_iou_thresh,
@@ -381,30 +341,26 @@ class FasterRCNN(FasterRCNNBase):
             rpn_pre_nms_top_n, rpn_post_nms_top_n, rpn_nms_thresh,
             score_thresh=rpn_score_thresh)
 
-        #  Multi-scale多尺度 RoIAlign pooling
         if box_roi_pool is None:
             box_roi_pool = MultiScaleRoIAlign(
-                featmap_names=['0', '1', '2', '3'],  # 在哪些特征层进行roi pooling
+                featmap_names=['0', '1', '2', '3'],  
                 output_size=[7, 7],
                 sampling_ratio=2)
 
-        # fast RCNN中roi pooling后的展平处理两个全连接层部分
         if box_head is None:
-            resolution = box_roi_pool.output_size[0]  # 默认等于7
+            resolution = box_roi_pool.output_size[0]  
             representation_size = 1024
             box_head = TwoMLPHead(
-                out_channels * resolution ** 2, # 256*7**2
+                out_channels * resolution ** 2, 
                 representation_size
             )
 
-        # 在box_head的输出上预测部分
         if box_predictor is None:
             representation_size = 1024
             box_predictor = FastRCNNPredictor(
                 representation_size,
                 num_classes)
 
-        # 将roi pooling, box_head以及box_predictor结合在一起
         roi_heads = RoIHeads(
             box_roi_pool,box_head, box_predictor,
             box_fg_iou_thresh, box_bg_iou_thresh,  # 0.5  0.5
@@ -417,7 +373,6 @@ class FasterRCNN(FasterRCNNBase):
         if image_std is None:
             image_std = [0.229, 0.224, 0.225]
 
-        # 对数据进行标准化，缩放，打包成batch等处理部分
         transform = GeneralizedRCNNTransform(min_size, max_size, image_mean, image_std)
 
         super(FasterRCNN, self).__init__(backbone, rpn, roi_heads, transform)
@@ -508,18 +463,18 @@ class CascadeMiningDet(FasterRCNNBase):
 
     def __init__(self, backbone, num_classes=None,
                  # transform parameter
-                 min_size=800, max_size=1333,      # 预处理resize时限制的最小尺寸与最大尺寸
-                 image_mean=None, image_std=None,  # 预处理normalize时使用的均值和方差
+                 min_size=800, max_size=1333,      
+                 image_mean=None, image_std=None,  
                  # RPN parameters
                  rpn_anchor_generator=None, rpn_head=None,
                  rpn_pre_nms_top_n_train=2000, 
-                 rpn_pre_nms_top_n_test=1000,    # rpn中在nms处理前保留的proposal数(根据score)
+                 rpn_pre_nms_top_n_test=1000,    
                  rpn_post_nms_top_n_train=2000, 
-                 rpn_post_nms_top_n_test=1000,  # rpn中在nms处理后保留的proposal数
-                 rpn_nms_thresh=0.7,  # rpn中进行nms处理时使用的iou阈值
-                 rpn_fg_iou_thresh=0.7, rpn_bg_iou_thresh=0.3,  # rpn计算损失时，采集正负样本设置的阈值
+                 rpn_post_nms_top_n_test=1000,  
+                 rpn_nms_thresh=0.7,  
+                 rpn_fg_iou_thresh=0.7, rpn_bg_iou_thresh=0.3,  
                  rpn_batch_size_per_image=256, 
-                 rpn_positive_fraction=0.5,  # rpn计算损失时采样的样本数，以及正样本占总样本的比例
+                 rpn_positive_fraction=0.5,  
                  rpn_score_thresh=0.0,
                  # Box parameters
                  box_roi_pool=None,   
@@ -532,15 +487,12 @@ class CascadeMiningDet(FasterRCNNBase):
                  box_predictor=None,   # FastRCNNPredictor
                  sec_box_predictor=None,
                  thr_box_predictor=None,
-                 # 移除低目标概率      fast rcnn中进行nms处理的阈值   对预测结果根据score排序取前100个目标
                  box_score_thresh=0.05, 
                  box_nms_thresh=0.5, 
                  box_detections_per_img=100,
-                #  box_detections_per_img=20,
-                 # fast rcnn计算误差时,采集正负样本设置的阈值(改为网络中设置,因需要逐步提高iou阈值)
                  # box_fg_iou_thresh=0.5, box_bg_iou_thresh=0.5,  
                  box_batch_size_per_image=512, 
-                 box_positive_fraction=0.25,  # fast rcnn计算误差时采样的样本数，以及正样本占所有样本的比例
+                 box_positive_fraction=0.25, 
                  bbox_reg_weights=None):
         if not hasattr(backbone, "out_channels"):
             raise ValueError(
@@ -561,10 +513,8 @@ class CascadeMiningDet(FasterRCNNBase):
                 raise ValueError("num_classes should not be None when box_predictor "
                                  "is not specified")
 
-        # 预测特征层的channels
         out_channels = backbone.out_channels
 
-        # 若anchor生成器为空，则自动生成针对resnet50_fpn的anchor生成器
         if rpn_anchor_generator is None:
             anchor_sizes = ((32,), (64,), (96,), (128,), (256,))
             aspect_ratios = ((0.5, 1.0, 2.0),) * len(anchor_sizes)
@@ -572,18 +522,14 @@ class CascadeMiningDet(FasterRCNNBase):
                 anchor_sizes, aspect_ratios
             )
 
-        # 生成RPN通过滑动窗口预测网络部分
         if rpn_head is None:
             rpn_head = RPNHead(
                 out_channels, rpn_anchor_generator.num_anchors_per_location()[0]
             )
 
-        # 默认rpn_pre_nms_top_n_train = 2000, rpn_pre_nms_top_n_test = 1000,
-        # 默认rpn_post_nms_top_n_train = 2000, rpn_post_nms_top_n_test = 1000,
         rpn_pre_nms_top_n = dict(training=rpn_pre_nms_top_n_train, testing=rpn_pre_nms_top_n_test)
         rpn_post_nms_top_n = dict(training=rpn_post_nms_top_n_train, testing=rpn_post_nms_top_n_test)
 
-        # 定义整个RPN框架
         rpn = RegionProposalNetwork(
             rpn_anchor_generator, rpn_head,
             rpn_fg_iou_thresh, rpn_bg_iou_thresh,
@@ -591,15 +537,12 @@ class CascadeMiningDet(FasterRCNNBase):
             rpn_pre_nms_top_n, rpn_post_nms_top_n, rpn_nms_thresh,
             score_thresh=rpn_score_thresh)
 
-        #  Multi-scale多尺度 RoIAlign pooling
         if box_roi_pool is None:
             box_roi_pool = MultiScaleRoIAlign(
-                featmap_names=['0', '1', '2', '3'],  # 在哪些特征层进行roi pooling
+                featmap_names=['0', '1', '2', '3'],  
                 output_size=[7, 7],
                 sampling_ratio=2)
             
-
-        # roiatt注意力模块增强ROI特征
         if roiatt is None:
             roiatt = RoiAtt(feat_channel=256, hidden_channel=128)
 
@@ -608,14 +551,12 @@ class CascadeMiningDet(FasterRCNNBase):
 
         if thr_roiatt is None:
             thr_roiatt = RoiAtt(feat_channel=256, hidden_channel=128)
-
-        
-        resolution = box_roi_pool.output_size[0]  # 默认等于7
+   
+        resolution = box_roi_pool.output_size[0] 
         representation_size = 1024
-        # fast RCNN中roi pooling后的展平处理两个全连接层部分(共传入三个)
         if box_head is None:
             box_head = TwoMLPHead(
-                out_channels * resolution ** 2, # 256*7**2
+                out_channels * resolution ** 2, 
                 representation_size
             )
 
@@ -626,7 +567,6 @@ class CascadeMiningDet(FasterRCNNBase):
             thr_box_head = TwoMLPHead(out_channels * resolution ** 2, representation_size)
         
 
-        # 在box_head之后的预测头(共传入三个)
         if box_predictor is None:
             box_predictor = FastRCNNPredictor(representation_size, num_classes)
             
@@ -636,8 +576,6 @@ class CascadeMiningDet(FasterRCNNBase):
         if thr_box_predictor is None:
             thr_box_predictor = FastRCNNPredictor(representation_size, num_classes)
 
-
-        # 将roi pooling, box_head以及box_predictor结合在一起
         roi_heads = CascadeRoIHeads( 
             box_roi_pool,
             roiatt,sec_roiatt,thr_roiatt,
@@ -647,26 +585,12 @@ class CascadeMiningDet(FasterRCNNBase):
             bbox_reg_weights,
             box_score_thresh, box_nms_thresh, box_detections_per_img)  # 0.05  0.5  100
 
-
         if image_mean is None:
             image_mean = [0.485, 0.456, 0.406]
-            
-            # 原始数据计算
-            # image_mean = [0.6998, 0.7004, 0.7115]
-            
-            # stain统一染色后计算
-            # image_mean = [0.8949, 0.9142, 0.9238]
         
         if image_std is None:
             image_std = [0.229, 0.224, 0.225]
-            
-            # 原始数据计算
-            # image_std = [0.2785, 0.2827, 0.2742]
 
-            # stain统一染色后计算
-            # image_std = [0.1296, 0.1302, 0.0920]
-
-        # 对数据进行标准化，缩放，打包成batch等处理部分
         transform = GeneralizedRCNNTransform(min_size, max_size, image_mean, image_std)
 
         super(CascadeMiningDet, self).__init__(backbone, rpn, roi_heads, transform)

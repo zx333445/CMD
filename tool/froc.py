@@ -21,7 +21,7 @@ parser.add_argument('--fps', default='0.125,0.25,0.5,1,2,4,8', type=str,
                     help='False positives per image to compute FROC, comma '
                     'seperated, default "0.125,0.25,0.5,1,2,4,8"')
 parser.add_argument('--type',default='1',type=str,
-                    help="the object type of the froc curve {'1':'CTC','2':'CTC样','3':'血液细胞','4':'非瘤细胞'}")
+                    help="the object type of the froc curve {'1':'CTC','2':'CTC样'}")
 
 def inside_object(pred, obj):
     # bounding box
@@ -44,10 +44,6 @@ def inside_object(pred, obj):
 
 
 def froc_curve(gt_csv,pred_csv,type,fps_list):
-    '''多类别时是否应该每个类别绘制一个froc曲线,
-    修改该函数为返回fps和froc曲线值(灵敏度)的列表,
-    以实现多个模型froc曲线画在一张图上'''
-
     
     # iou overlap threshold, we set 0.5
     ovthresh = 0.5
@@ -69,9 +65,7 @@ def froc_curve(gt_csv,pred_csv,type,fps_list):
             for object_anno in object_annos:
                 fields = object_anno.split(' ')
                 object_type = fields[0]
-                # 判断类别是否是命令行指定的绘制froc曲线的类别
                 if object_type == type:                    
-                    # 判断完类别符合后先将gt数加1
                     num_object += 1
                     coords = np.array(list(map(float, fields[1:])))
                     hit_flag = False
@@ -99,14 +93,12 @@ def froc_curve(gt_csv,pred_csv,type,fps_list):
             for coord_prediction in coord_predictions:
                 fields = coord_prediction.split(' ')
                 pred_type = fields[0]
-                # 同样根据指定的类别,筛选该类别预测框
                 if pred_type == type:
                     probability, x1, y1, x2, y2 = list(map(float, fields[1:]))
                     pred = Prediction(image_path, pred_type, probability,
                                     np.array([x1, y1, x2, y2]))
                     preds.append(pred)
     # sort prediction by probabiliyt
-    # 排序后之后循环时按照预测置信度高低依次匹配gt框,确保每次匹配的预测框是最为合适的
     preds = sorted(preds, key=lambda x: x.probability, reverse=True)
 
     # compute hits and false positives
@@ -118,8 +110,6 @@ def froc_curve(gt_csv,pred_csv,type,fps_list):
     froc = []
     for i in range(len(preds)):
         pred = preds[i]
-
-        # 此处有一个问题,如果预测框对应图片不在obj里面,那这个框也应该被判断是fp才对吧
         if pred.image_path in object_dict:
             objs = object_dict[pred.image_path]
             # gt boxes coords in this image
@@ -158,9 +148,6 @@ def froc_curve(gt_csv,pred_csv,type,fps_list):
                 jmax = np.argmax(overlaps)
 
             if ovmax > ovthresh:
-                # 如果最大的iou大于iou阈值0.5,则该预测框判断为TP,同时将该gt框设为已标记
-                # 如果匹配到的gt框大于阈值但已被标记,则将预测框判断为FP,
-                # 因预测框按照置信度排序,证明有更高置信度的预测框匹配该gt
                 if not BBGT_HIT_FLAG[jmax]:
                     BBGT_HIT_FLAG[jmax] = True
                     hits += 1
@@ -169,9 +156,6 @@ def froc_curve(gt_csv,pred_csv,type,fps_list):
             else:
                 false_positives += 1
 
-            # 在进行到该预测框置信度阈值时计算的fps超过给出的节点时,
-            # 记录该阈值时的灵敏度(召回率)为froc曲线值
-            # 若记录的值已经达到fps节点数,则停止循环,不进行下一个预测框
             if false_positives / num_image >= fps[fps_idx]:
                 sensitivity = hits / float(num_object)
                 froc.append(sensitivity)
@@ -183,18 +167,14 @@ def froc_curve(gt_csv,pred_csv,type,fps_list):
         else:
             false_positives += 1
 
-    # 检测一下数量是否有遗漏
     print(f'gt框数量: {num_object}')
     print(f'预测框数量: {len(preds)}')
     print(f'TP框数量: {hits}')
     print(f'FP框数量: {false_positives}')
-
-    # 当预测框不够计算到节点值时,添加froc记录值最后的数值
-    # 直至长度相同            
+           
     while len(froc) < len(fps):
         froc.append(froc[-1])
 
-    # 打印出各fps节点的灵敏度值
     print("False positives per image:")
     print("\t".join(fps_flag))
     print("Sensitivity:")
@@ -226,17 +206,10 @@ if __name__ == '__main__':
                 '/home/stat-zx/sparseCTC/results/pred/conv_loc.csv',
                 '/home/stat-zx/CTC_cascade/results/pred/cmdconv_loc.csv']
     
-    
-    # 注意若出现灵敏度达不到最高值时,说明点分的不够细,有的值未记录上
     fps_list = list(np.arange(0, 0.505, 0.005))
-    # fps_list = [0.0,0.005,0.01,0.02,0.04,0.08,0.1,0.5]
-    # fps_list = [0.125,0.25,0.5,1,2,4,8,16,32]
+  
     print("========plot curve========")
     palette = plt.get_cmap('Set1')
-    
-
-    # 设置rcParams参数(绘图theme)
-    # 坐标刻度文字大小、坐标刻度线长度宽度、坐标轴宽度
     plt.rcParams['xtick.labelsize'] = 16
     plt.rcParams['ytick.labelsize'] = 16
     plt.rcParams['xtick.major.size'] = 6

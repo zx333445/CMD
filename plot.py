@@ -114,8 +114,6 @@ def draw_gt(csv_root,save_path):
             img.save(os.path.join(save_path,path.split('/')[-1]))
 
 
-
-
 if __name__=="__main__":
 
     model = creat_model()

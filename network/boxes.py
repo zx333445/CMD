@@ -72,14 +72,10 @@ def batched_nms(boxes, scores, idxs, iou_threshold):
     # we add an offset to all the boxes. The offset is dependent
     # only on the class idx, and is large enough so that boxes
     # from different classes do not overlap
-    # 获取所有boxes中最大的坐标值（xmin, ymin, xmax, ymax）
     max_coordinate = boxes.max()
 
     # to(): Performs Tensor dtype and/or device conversion
-    # 为每一个类别/每一层生成一个很大的偏移量
-    # 这里的to只是让生成tensor的dytpe和device与boxes保持一致
     offsets = idxs.to(boxes) * (max_coordinate + 1)
-    # boxes加上对应层的偏移量后，保证不同类别/层之间boxes不会有重合的现象
     boxes_for_nms = boxes + offsets[:, None]
     keep = nms(boxes_for_nms, scores, iou_threshold)
     return keep
@@ -89,7 +85,6 @@ def remove_small_boxes(boxes, min_size):
     # type: (Tensor, float) -> Tensor
     """
     Remove boxes which contains at least one side smaller than min_size.
-    移除宽高小于指定阈值的索引
     Arguments:
         boxes (Tensor[8663, 4]): boxes in (x1, y1, x2, y2) format
         min_size (float): minimum size
@@ -100,14 +95,12 @@ def remove_small_boxes(boxes, min_size):
     """
 
     # ws tensor(8663)    hs tensor(8663)
-    ws, hs = boxes[:, 2] - boxes[:, 0], boxes[:, 3] - boxes[:, 1]  # 预测boxes的宽和高
-    # keep = (ws >= min_size) & (hs >= min_size)  # 当满足宽，高都大于给定阈值时为True
-    # torch.ge返回ws>=minsize的各位置logic值,后logical_and则返回共同满足两者条件的AND关系
+    ws, hs = boxes[:, 2] - boxes[:, 0], boxes[:, 3] - boxes[:, 1]  
+    # keep = (ws >= min_size) & (hs >= min_size)  
     # keep tensor(8663)
     keep = torch.logical_and(torch.ge(ws, min_size), torch.ge(hs, min_size))
     # nonzero(): Returns a tensor containing the indices of all non-zero elements of input
     # keep = keep.nonzero().squeeze(1)
-    # 返回同时满足两条件的索引 tensor(N)
     keep = torch.where(keep)[0]
     return keep
 
@@ -116,7 +109,6 @@ def clip_boxes_to_image(boxes, size):
     # type: (Tensor, Tuple[int, int]) -> Tensor
     """
     Clip boxes so that they lie inside an image of size `size`.
-    裁剪预测的boxes信息,将越界的坐标调整到图片边界上
 
     Arguments:
         boxes : boxes in (x1, y1, x2, y2) format  tensor(8663,4)/tensor(1024,5,4)
@@ -125,8 +117,7 @@ def clip_boxes_to_image(boxes, size):
     Returns:
         clipped_boxes Tensor(8663, 4)
     """
-    dim = boxes.dim() # 2或3
-    # 切片中三个点可表示前面所有的冒号(即可以代表多个维度),后面的0::2在最后一个维度上操作取值
+    dim = boxes.dim() 
     boxes_x = boxes[..., 0::2]  # x1, x2
     boxes_y = boxes[..., 1::2]  # y1, y2
     height, width = size
@@ -137,11 +128,9 @@ def clip_boxes_to_image(boxes, size):
         boxes_y = torch.max(boxes_y, torch.tensor(0, dtype=boxes.dtype, device=boxes.device))
         boxes_y = torch.min(boxes_y, torch.tensor(height, dtype=boxes.dtype, device=boxes.device))
     else:
-        boxes_x = boxes_x.clamp(min=0, max=width)   # 限制x坐标范围在[0,width]之间
-        boxes_y = boxes_y.clamp(min=0, max=height)  # 限制y坐标范围在[0,height]之间
+        boxes_x = boxes_x.clamp(min=0, max=width)   
+        boxes_y = boxes_y.clamp(min=0, max=height)  
     
-    # 此处stack堆叠维度在dim = 2,即创建了一个新的维度,结果为tensor(8663,2,2)
-    # 再次reshape为boxes的shape后,之前x,y坐标的顺序也可以调整回 (x1, y1, x2, y2) 的顺序
     clipped_boxes = torch.stack((boxes_x, boxes_y), dim=dim)
     return clipped_boxes.reshape(boxes.shape)
 

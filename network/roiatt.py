@@ -1,10 +1,5 @@
 #!/usr/bin/env python
 # coding=utf-8
-'''
-ROI注意力模块,
-添加到ROIpooling后,TwoMLPHead之前,
-放入ROIHead中
-'''
 
 import torch
 import torch.nn as nn
@@ -28,9 +23,6 @@ class RoiAtt(nn.Module):
 
 
     def forward(self,rois,feature):
-        # 传入参数时维度为
-        # rois tensor(B*numroi,C,h,w)  (1024,256,7,7)
-        # feature tensor(B,C,H,W)  (2,256,200,200)
         BS_roinum,C,h,w = rois.shape
         BS = feature.shape[0]
         roinum = BS_roinum//BS        

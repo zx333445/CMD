@@ -7,13 +7,12 @@ import torch.nn.functional as F
 from collections import OrderedDict
 
 
-
 class FeaturePyramidNetwork(nn.Module):
 
     def __init__(self, in_channels_list, out_channel, extra_block=None):
         super(FeaturePyramidNetwork, self).__init__()
-        self.inner_blocks = nn.ModuleList()  # 存储1x1conv
-        self.layer_blocks = nn.ModuleList()  # 存储3x3conv
+        self.inner_blocks = nn.ModuleList()  
+        self.layer_blocks = nn.ModuleList()  
         for in_channel in in_channels_list:
             inner_block = nn.Conv2d(in_channel, out_channel, 1)
             inner_block_gn = nn.GroupNorm(32, out_channel, 1e-5)

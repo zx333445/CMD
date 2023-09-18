@@ -2,11 +2,10 @@
 # coding=utf-8
 import os
 import torch
+import pandas as pd
 
 from PIL import Image
-import pandas as pd
 from torch.utils.data import Dataset
-
 
 
 class CTCDataset(Dataset):
@@ -22,11 +21,7 @@ class CTCDataset(Dataset):
             assert os.path.exists(path),  "not found {} file.".format(path)
 
         self.annotations = list(annotation['annotation'])
-        # 传入预先定义好的transforms
-        # 此处传入的transforms包括将图片转为tensor(同时归一化)与水平翻转等的组合
-        # 而图像大小改变与打包成batch的操作在generalizetransform中实现
         self.transforms = transforms
-        # 用于判断是否传入target
         self.train = train
 
 
@@ -44,7 +39,6 @@ class CTCDataset(Dataset):
         if type(annotation) != str:
             annotation = str(annotation)
 
-        # 不是训练模式时transform不对target进行,使用None/空{}即可
         if self.train:        
             boxes = []
             labels = []           
@@ -82,8 +76,6 @@ class CTCDataset(Dataset):
         else:
             target = {}
 
-        # 对target不进行totensor操作(已经是tensor),但翻转操作需要对bbox进行
         image, target = self.transforms(image, target)
-
         return image, target
 

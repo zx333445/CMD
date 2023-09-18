@@ -143,15 +143,12 @@ def main(args=None):
         "http://download.pytorch.org/models/fasterrcnn_resnet50_fpn_coco-258fb6c6.pth"
     }
     
-    # 从终端传入参数进入parse_args进行解析
     if args is None:
         args = sys.argv[1:]
     args = parse_args(args)
     print(args)
     
-
     CLASSES = {"__background__", "CTC","CTC样"}
-    # CLASSES = {"__background__", "CTC"}
 
     # if args.pretrained_resnet50_coco:
     #     state_dict = load_state_dict_from_url(
@@ -179,14 +176,10 @@ def main(args=None):
     
     print(model)
 
-
     device = torch.device(args.device)
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed(args.seed)
-
-    # 实例化dataset载入数据
-    # 注意normalize在训练集使用的话,则验证集与测试集也需要使用
-    # 注意在网络结构中的Generalizedtransform中包含了对数据的标准化,此处不应该包含normalize ?   
+   
     print("===============Loading data===============")
     data_transform = {
         "train": T.Compose([T.ImgAugTransform(),
@@ -213,8 +206,6 @@ def main(args=None):
         train=False,
         csv_name="test_pos.csv")
 
-    
-    # datalodaer包装dataset,注意collate_fn函数为自己指定,返回image与target的列表
     print("====Creating dataloader====")
     dataloader = torch.utils.data.DataLoader(
         dataset, batch_size=args.train_batch_size, shuffle=True,
@@ -236,7 +227,7 @@ def main(args=None):
         "val": dataloader_val,
         "test": dataloader_test,
     }
-    # 创建文件夹为tensorboard记录地址
+
     logdir = args.log_dir
     os.makedirs(logdir, exist_ok=True)
     writer = SummaryWriter(logdir)
@@ -244,7 +235,6 @@ def main(args=None):
     print("===============Loading model===============")
     model.to(device)
 
-    # 打印出模型参数量
     n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print('number of params:', n_parameters)
 

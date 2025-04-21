@@ -20,4 +20,15 @@ Directory description:
 ├─ _utils.py           // other utils code
 ```
 
+Run the following code for model training:
+
+```bash
+$ bash launch.sh
+```
+
+This will initiate the script `train.py` for 5-fold cross-validation model training.
+
+## Infer
 This file gives the code and examples of model inference [infer.ipynb](./infer.ipynb)
+
+You can download the trained model parameters at this link [CMD Model Weights](https://drive.google.com/file/d/1FKQzjePb4N0TolI7seGhXPOZVtQ8OKH5/view?usp=drive_link)

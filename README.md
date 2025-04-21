@@ -19,3 +19,5 @@ Directory description:
 ├─ launch.sh           // train.py launcher
 ├─ _utils.py           // other utils code
 ```
+
+This file gives the code and examples of model inference `infer.ipynb`

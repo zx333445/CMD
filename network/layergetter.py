@@ -72,7 +72,7 @@ class DenseNetLayerGetter(nn.Module):
 
 
 class SwinLayerGetter(nn.Module):
-    
+    '''Swin模型的分层特征提取器'''
     def __init__(self,model) -> None:
         super().__init__()
         self.model = model

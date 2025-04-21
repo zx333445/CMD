@@ -1,19 +1,18 @@
-#!/usr/bin/env python
-# coding=utf-8
 import os
 import torch
-import pandas as pd
+import torchstain
 
 from PIL import Image
+import pandas as pd
+import numpy as np
 from torch.utils.data import Dataset
 
 
 class CTCDataset(Dataset):
     ''''''
-    def __init__(self, ctc_root, transforms, train = True, csv_name = "train.csv"):
+    def __init__(self, csv_path, transforms, train = True, stain = False):
         super().__init__()
-        self.root = ctc_root
-        annotation = pd.read_csv(os.path.join(self.root,csv_name))
+        annotation = pd.read_csv(csv_path)
 
         self.image_list = list(annotation['image_path'])
 
@@ -23,7 +22,12 @@ class CTCDataset(Dataset):
         self.annotations = list(annotation['annotation'])
         self.transforms = transforms
         self.train = train
-
+        
+        self.stain = stain
+        if stain:
+            target = Image.open('/home/stat-zx/4.CTC_data/JPEGImages/20220062_Huang_005.jpg').convert('RGB')        
+            self.normalizer = torchstain.normalizers.ReinhardNormalizer(backend='numpy')
+            self.normalizer.fit(np.array(target))
 
     def __len__(self):
         return len(self.image_list)
@@ -33,6 +37,10 @@ class CTCDataset(Dataset):
         
         img_path = self.image_list[idx]
         image = Image.open(img_path).convert('RGB')
+        
+        if self.stain:
+            norm = self.normalizer.normalize(np.array(image))
+            image = Image.fromarray(norm).convert('RGB') # type: ignore
 
         annotation = self.annotations[idx]
         
@@ -66,16 +74,18 @@ class CTCDataset(Dataset):
             boxes = torch.as_tensor(boxes, dtype=torch.float32)
             labels = torch.as_tensor(labels, dtype=torch.int64)
             image_id = torch.tensor([idx])
+            iscrowd = torch.zeros(len(boxes), dtype=torch.int64)
             area = (boxes[:, 3] - boxes[:, 1]) * (boxes[:, 2] - boxes[:, 0])
 
             target = {}
             target["boxes"] = boxes
             target["labels"] = labels
             target["image_id"] = image_id
+            target["iscrowd"] = iscrowd
             target["area"] = area
         else:
             target = {}
 
         image, target = self.transforms(image, target)
-        return image, target
 
+        return image, target

@@ -6,7 +6,7 @@ import torch.nn.functional as F
 
 
 class BCEFocalLoss(nn.Module):
-    ''''''
+    '''二分类focalloss'''
     def __init__(self, alpha=0.25, gamma=2, from_logits=True, reduce=True):
         super(BCEFocalLoss, self).__init__()
         self.gamma = gamma
@@ -20,6 +20,7 @@ class BCEFocalLoss(nn.Module):
                 inputs, targets, reduce=False
             )
         else:
+            # 此处需要传入的预测需要为概率值,不是预测分数,即需要经过sigmoid映射
             bce_loss = F.binary_cross_entropy(inputs, targets,
                                               reduce=False)
         pt = torch.exp(-bce_loss)
@@ -32,7 +33,7 @@ class BCEFocalLoss(nn.Module):
 
 
 class CEFocalLoss(nn.Module):
-    ''''''
+    '''多分类focalloss'''
     def __init__(self, class_nums, alpha=[0.75, 0.25], gamma=2, size_avg=True):
         super(CEFocalLoss, self).__init__()
         if alpha is None:
@@ -92,8 +93,8 @@ class FocalLoss(nn.Module):
         target_.scatter_(1, target.view(-1, 1).long(), 1.)
 
         if self.use_alpha:
-            self.alpha.to(device=pred.device)
-            batch_loss = - self.alpha.double() * torch.pow(1-prob,self.gamma).double() * prob.log().double() * target_.double()
+            self.alpha.to(device=pred.device) # type: ignore
+            batch_loss = - self.alpha.double() * torch.pow(1-prob,self.gamma).double() * prob.log().double() * target_.double() # type: ignore
         else:
             batch_loss = - torch.pow(1-prob,self.gamma).double() * prob.log().double() * target_.double()
 
@@ -105,3 +106,55 @@ class FocalLoss(nn.Module):
             loss = batch_loss.sum()
 
         return loss
+
+
+def sigmoid_focal_loss(
+    inputs: torch.Tensor,
+    targets: torch.Tensor,
+    alpha: float = 0.25,
+    gamma: float = 2,
+    reduction: str = "none",
+) -> torch.Tensor:
+    """
+    Loss used in RetinaNet for dense detection: https://arxiv.org/abs/1708.02002.
+
+    Args:
+        inputs (Tensor): A float tensor of arbitrary shape.
+                The predictions for each example.
+        targets (Tensor): A float tensor with the same shape as inputs. Stores the binary
+                classification label for each element in inputs
+                (0 for the negative class and 1 for the positive class).
+        alpha (float): Weighting factor in range (0,1) to balance
+                positive vs negative examples or -1 for ignore. Default: ``0.25``.
+        gamma (float): Exponent of the modulating factor (1 - p_t) to
+                balance easy vs hard examples. Default: ``2``.
+        reduction (string): ``'none'`` | ``'mean'`` | ``'sum'``
+                ``'none'``: No reduction will be applied to the output.
+                ``'mean'``: The output will be averaged.
+                ``'sum'``: The output will be summed. Default: ``'none'``.
+    Returns:
+        Loss tensor with the reduction option applied.
+    """
+    # Original implementation from https://github.com/facebookresearch/fvcore/blob/master/fvcore/nn/focal_loss.py
+    
+    p = torch.sigmoid(inputs)
+    ce_loss = F.binary_cross_entropy_with_logits(inputs, targets, reduction="none")
+    p_t = p * targets + (1 - p) * (1 - targets)
+    loss = ce_loss * ((1 - p_t) ** gamma)
+
+    if alpha >= 0:
+        alpha_t = alpha * targets + (1 - alpha) * (1 - targets)
+        loss = alpha_t * loss
+
+    # Check reduction option and return loss accordingly
+    if reduction == "none":
+        pass
+    elif reduction == "mean":
+        loss = loss.mean()
+    elif reduction == "sum":
+        loss = loss.sum()
+    else:
+        raise ValueError(
+            f"Invalid Value for arg 'reduction': '{reduction} \n Supported reduction modes: 'none', 'mean', 'sum'"
+        )
+    return loss

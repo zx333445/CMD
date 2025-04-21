@@ -40,9 +40,14 @@ def voc_ap(recall, precision, use_07_metric=False):
 def custom_voc_eval(gt_csv, pred_csv, label_list = ['1','2'], ovthresh=0.5, use_07_metric=False):
     """
     Do custom eval, include mAP and FROC,
+    此函数已改为多类别分别计算AP值,并返回mAP,需传入label_list循环各类别,
+    计算froc则在froc.py中进行
+    
     gt_csv: path/to/ground_truth_csv
     pred_csv: path/to/pred_csv
-    ovthresh: iou threshold    
+    label_list: 用于循环计算ap值的label列表
+    ovthresh: iou threshold
+    
     """
     # parse ground truth csv, by parsing the ground truth csv,
     # we get ground box info
@@ -52,7 +57,7 @@ def custom_voc_eval(gt_csv, pred_csv, label_list = ['1','2'], ovthresh=0.5, use_
         # skip header
         next(f)
         for line in f:
-            image_path, annotation = line.strip("\n").split(",")
+            image_path, annotation, _ = line.strip("\n").split(",")
             if annotation == "":
                 continue
             
@@ -89,7 +94,9 @@ def custom_voc_eval(gt_csv, pred_csv, label_list = ['1','2'], ovthresh=0.5, use_
                                   np.array([x1, y1, x2, y2]))
                 preds.append(pred)
 
+
     AP_dict = {}
+    f1_dict = {}
     for label in label_list:
         label_preds = [pred for pred in preds if pred.pred_type == label]
 
@@ -100,6 +107,7 @@ def custom_voc_eval(gt_csv, pred_csv, label_list = ['1','2'], ovthresh=0.5, use_
         object_hitted = set()
         tp = np.zeros(nd)
         fp = np.zeros(nd)
+
         num_object = sum([len(obj) for obj in object_dict[label].values()])
 
         # loop over each pred box to see if it matches one ground box
@@ -115,7 +123,7 @@ def custom_voc_eval(gt_csv, pred_csv, label_list = ['1','2'], ovthresh=0.5, use_
                 try:
                     BBGT = np.stack(R, axis=0)
                 except ValueError:
-                    import ipdb;ipdb.set_trace()
+                    print(f'image_path: {image_path} with wrong gt {R}')
                 R_img_id = [i.object_id for i in object_dict[label][image_path]]
                 BBGT_hitted_flag = np.stack(R_img_id, axis=0)
 
@@ -144,7 +152,7 @@ def custom_voc_eval(gt_csv, pred_csv, label_list = ['1','2'], ovthresh=0.5, use_
                     jmax = np.argmax(overlaps)
                 
                 
-                if ovmax > ovthresh:              
+                if ovmax > ovthresh:               
                     if BBGT_hitted_flag[jmax] not in object_hitted:
                         tp[d] = 1.
                         object_hitted.add(BBGT_hitted_flag[jmax])
@@ -158,7 +166,7 @@ def custom_voc_eval(gt_csv, pred_csv, label_list = ['1','2'], ovthresh=0.5, use_
         print(f'预测框数量: {len(label_preds)}')
         print(f'TP框数量: {sum(tp)}')
         print(f'FP框数量: {sum(fp)}')
-         
+          
         fp = np.cumsum(fp)
         tp = np.cumsum(tp)
 
@@ -167,15 +175,25 @@ def custom_voc_eval(gt_csv, pred_csv, label_list = ['1','2'], ovthresh=0.5, use_
         # cal precision
         prec = tp / np.maximum(tp+fp, np.finfo(np.float64).eps)
         ap = voc_ap(rec, prec, use_07_metric)
+
         AP_dict[label] = ap
+        
+        f1 = 2 * prec * rec / (prec + rec + 1e-16)
+        f1_dict[label] = f1
 
     mAP = sum([ap for ap in AP_dict.values()])/len(label_list)
-    return AP_dict,mAP
+    try:
+        mf1 = sum([f1[-1] for f1 in f1_dict.values()])/len(label_list)
+    except IndexError:
+        mf1 = 0.0
+    return AP_dict,mAP,mf1
 
 
 if __name__ == "__main__":
     # gt_csv = "../statistic_description/tmp/test.csv"
     # pred_csv = "../tmp/detection_results/loc.csv"
+    gt_csv = "/home/stat-caolei/code/TCT_V3/doctor_gt.csv"
+    pred_csv = "/home/stat-caolei/code/TCT_V3/doctor_pred.csv"
 
     recall, precision, ap = custom_voc_eval(gt_csv, pred_csv)
     import ipdb;ipdb.set_trace()

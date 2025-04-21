@@ -13,6 +13,6 @@ from .pooler import *
 from .roi_head import *
 from .rpn_function import *
 from .transform import *
-from .model_without_fpn import *
-
-
+from .fcos import *
+from .retinanet import *
+from .ssd import *

@@ -18,7 +18,7 @@ def _flip_coco_person_keypoints(kps, width):
 
 
 class Compose(object):
-    ''''''
+    '''组合多个transforms函数'''
     def __init__(self, transforms):
         self.transforms = transforms
 
@@ -35,7 +35,7 @@ class RandomHorizontalFlip(object):
     def __call__(self, image, target):
         if random.random() < self.prob:
             height, width = image.shape[-2:]
-            image = image.flip(-1) 
+            image = image.flip(-1) # 水平翻转图片
             bbox = target["boxes"]
             # bbox: xmin, ymin, xmax, ymax
             bbox[:, [0, 2]] = width - bbox[:, [2, 0]]
@@ -70,7 +70,7 @@ class RandomVerticalFlip(object):
 
 
 class ToTensor(object):
-    ''''''
+    '''将PIL图像转为Tensor'''
     def __call__(self, image, target):
         image = F.to_tensor(image)
         return image, target
@@ -93,15 +93,16 @@ class ImgAugTransform(object):
     Use imgaug package to do data augmentation
     """
     def __init__(self):
+        # someof即每次从后续序列中选择部分项目,此处为0~3个项目
         self.aug = iaa.SomeOf((0, 3), [
             iaa.Fliplr(0.5),
             iaa.Flipud(0.5),
             iaa.OneOf([iaa.Affine(rotate=90),
                     iaa.Affine(rotate=180),
-                    iaa.Affine(rotate=270)]),  
-            iaa.Multiply((0.8, 1.5),per_channel=0.5),  
-            iaa.Grayscale(0.6),                   
-            iaa.GaussianBlur(sigma=(0.0, 5.0))  
+                    iaa.Affine(rotate=270)]),  # 旋转one of 角度
+            iaa.Multiply((0.8, 1.5),per_channel=0.5),  # 亮度变化
+            iaa.Grayscale(0.6),   # 灰度图                
+            iaa.GaussianBlur(sigma=(0.0, 5.0))  # 高斯扰动(变模糊)
         ])
 
     def __call__(self, image, target):
@@ -119,4 +120,3 @@ class ImgAugTransform(object):
                           for i in boxes.bounding_boxes])
         target["boxes"] = torch.as_tensor(boxes, dtype=torch.float32)
         return PIL.Image.fromarray(image), target
-        

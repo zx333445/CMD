@@ -5,19 +5,28 @@ from torchvision.models import resnet
 from torchvision.models import densenet
 from torchvision import models
 from .layergetter import IntermediateLayerGetter, DenseNetLayerGetter, SwinLayerGetter, ConvNextLayerGetter
-from .fpn import FeaturePyramidNetwork, MaxpoolOnP5
+from .fpn import FeaturePyramidNetwork, AttFeaturePyramidNetwork, MaxpoolOnP5, LastLevelMaxPool, LastLevelP6P7
 from .misc import FrozenBatchNorm2d
 
 
 class BackboneWithFPN(nn.Module):
 
     def __init__(self, backbone, return_layers,
-                 in_channels_list, out_channel):
+                 in_channels_list, out_channel, extra_type=None):
         super(BackboneWithFPN, self).__init__()
         self.body = IntermediateLayerGetter(backbone, return_layers)
-        self.fpn = FeaturePyramidNetwork(in_channels_list,
-                                         out_channel,
-                                         extra_block=MaxpoolOnP5())
+        # faster,cascade,sparse
+        if extra_type == 'maxpool':
+            self.fpn = FeaturePyramidNetwork(in_channels_list,
+                                            out_channel,
+                                            extra_block=MaxpoolOnP5(),
+                                            extra_type=extra_type)
+        # fcos, retinanet
+        elif extra_type == 'last':
+            self.fpn = FeaturePyramidNetwork(in_channels_list,
+                                             out_channel,
+                                             extra_block=LastLevelP6P7(2048,256),
+                                             extra_type=extra_type)     
         self.out_channels = out_channel
 
     def forward(self, x):
@@ -28,12 +37,21 @@ class BackboneWithFPN(nn.Module):
 
 class BackboneWithFPNForDensenet(nn.Module):
 
-    def __init__(self, backbone, in_channels_list, out_channel):
+    def __init__(self, backbone, in_channels_list, out_channel, extra_type=None):
         super(BackboneWithFPNForDensenet, self).__init__()
         self.body = DenseNetLayerGetter(backbone)
-        self.fpn = FeaturePyramidNetwork(in_channels_list,
-                                         out_channel,
-                                         extra_block=MaxpoolOnP5())
+        # faster,cascade,sparse
+        if extra_type == 'maxpool':
+            self.fpn = AttFeaturePyramidNetwork(in_channels_list,
+                                            out_channel,
+                                            extra_block=MaxpoolOnP5(),
+                                            extra_type=extra_type)
+        # fcos, retinanet
+        elif extra_type == 'last':
+            self.fpn = AttFeaturePyramidNetwork(in_channels_list,
+                                             out_channel,
+                                             extra_block=LastLevelP6P7(2048,256),
+                                             extra_type=extra_type)     
         self.out_channels = out_channel
 
     def forward(self, x):
@@ -42,14 +60,48 @@ class BackboneWithFPNForDensenet(nn.Module):
         return x
 
 
-class BackboneWithFPNForSwin(nn.Module):
-    
-    def __init__(self, backbone, in_channels_list, out_channel):
+class FPNForSwin(nn.Module):
+    ''''''
+    def __init__(self, backbone, in_channels_list, out_channel, extra_type=None):
         super().__init__()
         self.body = SwinLayerGetter(backbone)
-        self.fpn = FeaturePyramidNetwork(in_channels_list,
-                                         out_channel,
-                                         extra_block=MaxpoolOnP5())
+        # faster,cascade,sparse
+        if extra_type == 'maxpool':
+            self.fpn = FeaturePyramidNetwork(in_channels_list,
+                                             out_channel,
+                                             extra_block=MaxpoolOnP5(),
+                                             extra_type=extra_type)
+        # fcos, retinanet
+        elif extra_type == 'last':
+            self.fpn = FeaturePyramidNetwork(in_channels_list,
+                                             out_channel,
+                                             extra_block=LastLevelP6P7(in_channels_list[-1],256),
+                                             extra_type=extra_type)     
+        self.out_channels = out_channel
+
+    def forward(self,x):
+        x = self.body(x)
+        x = self.fpn(x)
+        return x
+    
+
+class AttFPNForSwin(nn.Module):
+    ''''''
+    def __init__(self, backbone, in_channels_list, out_channel, extra_type=None):
+        super().__init__()
+        self.body = SwinLayerGetter(backbone)
+        # faster,cascade,sparse
+        if extra_type == 'maxpool':
+            self.fpn = AttFeaturePyramidNetwork(in_channels_list,
+                                            out_channel,
+                                            extra_block=MaxpoolOnP5(),
+                                            extra_type=extra_type)
+        # fcos, retinanet
+        elif extra_type == 'last':
+            self.fpn = AttFeaturePyramidNetwork(in_channels_list,
+                                             out_channel,
+                                             extra_block=LastLevelP6P7(in_channels_list[-1],256),
+                                             extra_type=extra_type)     
         self.out_channels = out_channel
 
     def forward(self,x):
@@ -59,7 +111,7 @@ class BackboneWithFPNForSwin(nn.Module):
 
 
 class BackboneWithFPNForConvNext(nn.Module):
-    
+    ''''''
     def __init__(self, backbone, in_channels_list, out_channel):
         super().__init__()
         self.body = ConvNextLayerGetter(backbone)
@@ -74,13 +126,12 @@ class BackboneWithFPNForConvNext(nn.Module):
         return x
 
 
-
-def resnet_fpn_backbone(backbone_name, pretrained):
+def resnet_fpn_backbone(backbone_name, extra_type='maxpool'):
  
     backbone = resnet.__dict__[backbone_name](
         weights= models.ResNet50_Weights.DEFAULT
         # weights = None
-        # pretrained = pretrained     
+        # pretrained = pretrained  
     )
     for name, param in backbone.named_parameters():
         if "layer2" not in name and "layer3" not in name and "layer4" not in name:
@@ -98,14 +149,11 @@ def resnet_fpn_backbone(backbone_name, pretrained):
     ]
     out_channel = 256
     return BackboneWithFPN(backbone, return_layers,
-                          in_channels_list, out_channel)
+                          in_channels_list, out_channel, extra_type=extra_type)
 
 
-def densenet_fpn_backbone(backbone_name, pretrained):
-    backbone = densenet.__dict__[backbone_name](
-        weights=models.DenseNet169_Weights.DEFAULT   
-        # pretrained = pretrained    
-    )
+def densenet_fpn_backbone(extra_type='maxpool'):
+    backbone = densenet.densenet169(weights=models.DenseNet169_Weights.DEFAULT)
     for name, param in backbone.features.named_parameters():
         if "denseblock" not in name and "transition" not in name:
             param.requires_grad_(False)
@@ -117,18 +165,26 @@ def densenet_fpn_backbone(backbone_name, pretrained):
     out_channel = 256
     return BackboneWithFPNForDensenet(backbone,
                                       in_channels_list,
-                                      out_channel)
+                                      out_channel,
+                                      extra_type=extra_type)
 
 
-def swin_fpn_backbone():
-    backbone = models.swin_b(weights = models.Swin_B_Weights.DEFAULT)
+def swin_fpn_backbone(extra_type='maxpool'):
+    backbone = models.swin_s(weights = models.Swin_S_Weights.DEFAULT)
 
-    in_channels_list = [128,256,512,1024]  # swin-b
-    # in_channels_list = [96,192,384,768]  # swin-s
+    # in_channels_list = [128,256,512,1024]  # swin-b
+    in_channels_list = [96,192,384,768]  # swin-s
     out_channel = 256
-    return BackboneWithFPNForSwin(backbone,
-                                  in_channels_list,
-                                  out_channel)
+    return FPNForSwin(backbone, in_channels_list, out_channel, extra_type=extra_type)
+
+
+def swin_attfpn_backbone(extra_type='maxpool'):
+    backbone = models.swin_s(weights = models.Swin_S_Weights.DEFAULT)
+
+    # in_channels_list = [128,256,512,1024]  # swin-b
+    in_channels_list = [96,192,384,768]  # swin-s
+    out_channel = 256
+    return AttFPNForSwin(backbone, in_channels_list, out_channel, extra_type=extra_type)
 
 
 def convnext_fpn_backbone():
@@ -140,4 +196,15 @@ def convnext_fpn_backbone():
                                   in_channels_list,
                                   out_channel)
 
+
+
+if __name__ == "__main__":
+    import torch
+
+    x = torch.randn(6, 3, 256, 256)
+    # net = resnet_fpn_backbone("resnet50", True)
+    # net = densenet_fpn_backbone("densenet161", True)
+    net = swin_fpn_backbone()
+    out = net(x)
+    import ipdb;ipdb.set_trace()
 
